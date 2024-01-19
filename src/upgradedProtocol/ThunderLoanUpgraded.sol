@@ -272,6 +272,7 @@ contract ThunderLoanUpgraded is Initializable, OwnableUpgradeable, UUPSUpgradeab
         return address(s_tokenToAssetToken[token]) != address(0);
     }
 
+    // @written-info in aderyn 
     function getAssetFromToken(IERC20 token) public view returns (AssetToken) {
         return s_tokenToAssetToken[token];
     }

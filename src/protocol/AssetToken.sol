@@ -18,9 +18,13 @@ contract AssetToken is ERC20 {
     IERC20 private immutable i_underlying;
     address private immutable i_thunderLoan;
 
+    // underlying is kinda like USDC , asset sounding the shares the pool
+    // very similar to the compound , i.e c tokens ?
     // The underlying per asset exchange rate
     // ie: s_exchangeRate = 2
     // means 1 asset token is worth 2 underlying tokens
+    // what does this rate do ?
+
     uint256 private s_exchangeRate;
     uint256 public constant EXCHANGE_RATE_PRECISION = 1e18;
     uint256 private constant STARTING_EXCHANGE_RATE = 1e18;
@@ -52,7 +56,8 @@ contract AssetToken is ERC20 {
     //////////////////////////////////////////////////////////////*/
     constructor(
         address thunderLoan,
-        IERC20 underlying,
+        IERC20 underlying, 
+        // q where are token stored ? , stored in asset token sm ? or thunderloan ? 
         string memory assetName,
         string memory assetSymbol
     )
@@ -65,6 +70,7 @@ contract AssetToken is ERC20 {
         s_exchangeRate = STARTING_EXCHANGE_RATE;
     }
 
+    // e , ok , only the thunderloan contract can mint asset token 
     function mint(address to, uint256 amount) external onlyThunderLoan {
         _mint(to, amount);
     }
@@ -74,18 +80,29 @@ contract AssetToken is ERC20 {
     }
 
     function transferUnderlyingTo(address to, uint256 amount) external onlyThunderLoan {
+        // weird erc20 ? 
+        // q what happen if usdc black list the thunderloan contract ?
+        // q what happen if usdc black list the asset token contract ?
+        // @follow up , weird ERC20 with USDC  
         i_underlying.safeTransfer(to, amount);
     }
+    
 
+    // e responsible for updating the exchange rate -> underlaying 
     function updateExchangeRate(uint256 fee) external onlyThunderLoan {
         // 1. Get the current exchange rate
         // 2. How big the fee is should be divided by the total supply
         // 3. So if the fee is 1e18, and the total supply is 2e18, the exchange rate be multiplied by 1.5
         // if the fee is 0.5 ETH, and the total supply is 4, the exchange rate should be multiplied by 1.125
         // it should always go up, never down
+        // q ok but why ? invariant ? 
         // newExchangeRate = oldExchangeRate * (totalSupply + fee) / totalSupply
         // newExchangeRate = 1 (4 + 0.5) / 4
         // newExchangeRate = 1.125
+
+        //q what if totalsupply is 0? 
+        // this break! is that an issue ? 
+        // @audit gas , too many storage read ! - > sotre as a memory 
         uint256 newExchangeRate = s_exchangeRate * (totalSupply() + fee) / totalSupply();
 
         if (newExchangeRate <= s_exchangeRate) {

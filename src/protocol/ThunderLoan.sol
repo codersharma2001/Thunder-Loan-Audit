@@ -137,22 +137,34 @@ contract ThunderLoan is Initializable, OwnableUpgradeable, UUPSUpgradeable, Orac
     /*//////////////////////////////////////////////////////////////
                            EXTERNAL FUNCTIONS
     //////////////////////////////////////////////////////////////*/
+    // @audit-info need to do zero address checks 
+    // q what happen if we deploy the contract , and someone else initiliaze it ? 
+    // a that would suck 
+    // @audit low - initializer would frontrun 
+
     function initialize(address tswapAddress) external initializer {
         __Ownable_init(msg.sender);
         __UUPSUpgradeable_init();
-        __Oracle_init(tswapAddress);
-        s_feePrecision = 1e18;
+        __Oracle_init(tswapAddress); //// using tswap as oracle
+        s_feePrecision = 1e18; // magics no.s 
         s_flashLoanFee = 3e15; // 0.3% ETH fee
     }
 
+    // where is the natspec ? ??
     function deposit(IERC20 token, uint256 amount) external revertIfZero(amount) revertIfNotAllowedToken(token) {
-        AssetToken assetToken = s_tokenToAssetToken[token];
-        uint256 exchangeRate = assetToken.getExchangeRate();
+        AssetToken assetToken = s_tokenToAssetToken[token]; // e represent the pool shares
+        uint256 exchangeRate = assetToken.getExchangeRate(); // e 100 usdc * 1 e18 / 1 e18 (2 e18) 
+        // 100e18 * 1e18 / 2e18 = 50e18
+        // this should never be zero , because the asset token conditional 
+
         uint256 mintAmount = (amount * assetToken.EXCHANGE_RATE_PRECISION()) / exchangeRate;
         emit Deposit(msg.sender, token, amount);
         assetToken.mint(msg.sender, mintAmount);
         uint256 calculatedFee = getCalculatedFee(token, amount);
         assetToken.updateExchangeRate(calculatedFee);
+        
+        // @audit follow , this seems sus !?
+        // e when a liquidity provider deposite , the money sites in the asset token contract
         token.safeTransferFrom(msg.sender, address(assetToken), amount);
     }
 
@@ -200,15 +212,21 @@ contract ThunderLoan is Initializable, OwnableUpgradeable, UUPSUpgradeable, Orac
         }
 
         uint256 fee = getCalculatedFee(token, amount);
+        // @audit-inof messed up slither disable 
         // slither-disable-next-line reentrancy-vulnerabilities-2 reentrancy-vulnerabilities-3
+        // @audit add follow up 
         assetToken.updateExchangeRate(fee);
 
         emit FlashLoan(receiverAddress, token, amount, fee, params);
 
         s_currentlyFlashLoaning[token] = true;
+        // @follow-up
         assetToken.transferUnderlyingTo(receiverAddress, amount);
         // slither-disable-next-line unused-return reentrancy-vulnerabilities-2
         receiverAddress.functionCall(
+        // @follow-up reentrancy
+        // @follow-up do we need the return value of function call 
+
             abi.encodeCall(
                 IFlashLoanReceiver.executeOperation,
                 (
@@ -235,12 +253,13 @@ contract ThunderLoan is Initializable, OwnableUpgradeable, UUPSUpgradeable, Orac
         AssetToken assetToken = s_tokenToAssetToken[token];
         token.safeTransferFrom(msg.sender, address(assetToken), amount);
     }
-
+  // ok , @audit-info needs natspec 
     function setAllowedToken(IERC20 token, bool allowed) external onlyOwner returns (AssetToken) {
         if (allowed) {
-            if (address(s_tokenToAssetToken[token]) != address(0)) {
+            if (address(s_tokenToAssetToken[token]) != address(0)) { // @audit-info revert with token 
                 revert ThunderLoan__AlreadyAllowed();
             }
+            // what if they dont have a name ? 
             string memory name = string.concat("ThunderLoan ", IERC20Metadata(address(token)).name());
             string memory symbol = string.concat("tl", IERC20Metadata(address(token)).symbol());
             AssetToken assetToken = new AssetToken(address(this), token, name, symbol);
@@ -254,7 +273,7 @@ contract ThunderLoan is Initializable, OwnableUpgradeable, UUPSUpgradeable, Orac
             return assetToken;
         }
     }
-
+    // @audit-info where is the natspec
     function getCalculatedFee(IERC20 token, uint256 amount) public view returns (uint256 fee) {
         //slither-disable-next-line divide-before-multiply
         uint256 valueOfBorrowedToken = (amount * getPriceInWeth(address(token))) / s_feePrecision;
@@ -267,6 +286,7 @@ contract ThunderLoan is Initializable, OwnableUpgradeable, UUPSUpgradeable, Orac
             revert ThunderLoan__BadNewFee();
         }
         s_flashLoanFee = newFee;
+        // @audit must emit the event 
     }
 
     function isAllowedToken(IERC20 token) public view returns (bool) {
